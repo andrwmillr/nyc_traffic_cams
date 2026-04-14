@@ -1,0 +1,5 @@
+.DS_Store
+composite_videos/
+*.pyc
+__pycache__/
+.claude/
