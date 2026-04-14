@@ -9,9 +9,12 @@ with open('trafficgifs_places_dict.json') as f:
 with open('clip_metadata.json') as f:
     clip_meta = json.load(f)
 
+with open('nyctmc_cameras.json') as f:
+    live_cameras = json.load(f)
+
 nyc_places = {'Manhattan', 'New York', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'}
 
-borough_colors = {
+borough_colors_dark = {
     'Manhattan': '#00ffff',
     'New York': '#00ffff',
     'Brooklyn': '#4d88ff',
@@ -19,6 +22,15 @@ borough_colors = {
     'Bronx': '#ff8844',
     'Staten Island': '#bb66ff',
 }
+borough_colors_light = {
+    'Manhattan': '#0088aa',
+    'New York': '#0088aa',
+    'Brooklyn': '#2255cc',
+    'Queens': '#228844',
+    'Bronx': '#cc5500',
+    'Staten Island': '#7733bb',
+}
+borough_colors = borough_colors_dark
 
 # --- Build CLIP_DATA for JS injection ---
 
@@ -57,6 +69,21 @@ for intersection, clips in clip_meta.items():
 
 clip_data_json = json.dumps(clip_data, separators=(',', ':'))
 
+# --- Build LIVE_CAMERAS for JS injection ---
+live_cam_data = []
+for cam in live_cameras:
+    if cam.get('isOnline') == 'true':
+        area = cam.get('area', '')
+        live_cam_data.append({
+            'id': cam['id'],
+            'name': cam['name'],
+            'lat': cam['latitude'],
+            'lng': cam['longitude'],
+            'color': borough_colors_dark.get(area, '#ffffff'),
+            'colorLight': borough_colors_light.get(area, '#666666'),
+        })
+live_cam_json = json.dumps(live_cam_data, separators=(',', ':'))
+
 # --- Create map ---
 
 m = folium.Map(location=[40.0, -74.5], zoom_start=4, tiles='CartoDB DarkMatter')
@@ -65,7 +92,8 @@ for coord, entries in coords.items():
     if any(e['place'] in nyc_places for e in entries):
         loc = json.loads(coord)
         place = entries[0]['place']
-        color = borough_colors.get(place, '#ffffff')
+        color = borough_colors_dark.get(place, '#ffffff')
+        color_light = borough_colors_light.get(place, '#666666')
 
         intersection = entries[0]['text'].split(' https')[0]
         clip_key = re.sub('[+-/]', ' ', intersection)
@@ -81,17 +109,61 @@ for coord, entries in coords.items():
         )
         cm.options['clipKey'] = clip_key
         cm.options['title'] = intersection
+        cm.options['colorDark'] = color
+        cm.options['colorLight'] = color_light
         cm.add_to(m)
 
 map_var = m.get_name()
 
-# --- Inject CLIP_DATA ---
-Element(f'<script>var CLIP_DATA={clip_data_json};</script>').add_to(m.get_root().html)
+# --- Inject data ---
+Element(f'<script>var CLIP_DATA={clip_data_json};var LIVE_CAMERAS={live_cam_json};</script>').add_to(m.get_root().html)
 
 # --- Title overlay ---
 title_html = '''
-<div id="map-title">NYC TRAFFIC &mdash; 2020</div>
+<div id="map-title">NYC TRAFFIC &mdash; LIVE</div>
 <style>
+:root {
+    --panel-bg: rgba(0, 0, 0, 0.88);
+    --panel-border: rgba(255, 255, 255, 0.15);
+    --panel-shadow: 0 0 30px rgba(0, 255, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.6);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.5);
+    --text-dim: rgba(255, 255, 255, 0.3);
+    --text-muted: rgba(255, 255, 255, 0.2);
+    --accent: #00ffff;
+    --accent-glow: rgba(0, 255, 255, 0.4);
+    --accent-bg: rgba(0, 255, 255, 0.1);
+    --accent-bg-hover: rgba(0, 255, 255, 0.25);
+    --accent-bg-active: rgba(0, 255, 255, 0.4);
+    --title-shadow: 0 0 12px rgba(0, 255, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.8);
+    --btn-border: rgba(255, 255, 255, 0.2);
+    --btn-bg: rgba(255, 255, 255, 0.05);
+    --track-bg: rgba(255, 255, 255, 0.1);
+    --dot-bg: rgba(255, 255, 255, 0.3);
+    --thumb-border: #ffffff;
+    --locked-stroke: #ffffff;
+}
+:root.theme-light {
+    --panel-bg: rgba(255, 255, 255, 0.92);
+    --panel-border: rgba(0, 0, 0, 0.12);
+    --panel-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    --text-primary: #1a1a2e;
+    --text-secondary: rgba(0, 0, 0, 0.5);
+    --text-dim: rgba(0, 0, 0, 0.3);
+    --text-muted: rgba(0, 0, 0, 0.2);
+    --accent: #0077aa;
+    --accent-glow: rgba(0, 119, 170, 0.3);
+    --accent-bg: rgba(0, 119, 170, 0.08);
+    --accent-bg-hover: rgba(0, 119, 170, 0.15);
+    --accent-bg-active: rgba(0, 119, 170, 0.25);
+    --title-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    --btn-border: rgba(0, 0, 0, 0.15);
+    --btn-bg: rgba(0, 0, 0, 0.03);
+    --track-bg: rgba(0, 0, 0, 0.1);
+    --dot-bg: rgba(0, 0, 0, 0.2);
+    --thumb-border: #ffffff;
+    --locked-stroke: #0077aa;
+}
 #map-title {
     position: fixed;
     top: 80px;
@@ -99,13 +171,13 @@ title_html = '''
     font-family: 'Courier New', monospace;
     font-size: 22px;
     font-weight: bold;
-    color: #ffffff;
+    color: var(--text-primary);
     letter-spacing: 3px;
-    text-shadow: 0 0 12px rgba(0, 255, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.8);
+    text-shadow: var(--title-shadow);
     z-index: 1000;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 1s ease-in;
+    transition: opacity 1s ease-in, color 0.5s, text-shadow 0.5s;
 }
 #map-title.visible {
     opacity: 1;
@@ -120,6 +192,7 @@ video_panel_html = '''
     <div id="video-title"></div>
     <div id="compass"></div>
     <video id="video-player" width="100%" controls muted loop></video>
+    <img id="live-image" width="100%" style="display:none; border-radius:4px;">
     <div id="clip-nav">
         <button id="clip-prev">&lsaquo;</button>
         <span id="clip-counter"></span>
@@ -132,13 +205,14 @@ video_panel_html = '''
     bottom: 20px;
     right: 20px;
     width: 380px;
-    background: rgba(0, 0, 0, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
     border-radius: 10px;
     padding: 14px;
     z-index: 1000;
     display: none;
-    box-shadow: 0 0 30px rgba(0, 255, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--panel-shadow);
+    transition: background 0.5s, border-color 0.5s, box-shadow 0.5s;
 }
 #video-panel.active {
     display: block;
@@ -152,10 +226,11 @@ video_panel_html = '''
     font-family: 'Courier New', monospace;
     font-size: 13px;
     font-weight: bold;
-    color: #ffffff;
+    color: var(--text-primary);
     letter-spacing: 1px;
     margin-bottom: 8px;
-    text-shadow: 0 0 6px rgba(0, 255, 255, 0.4);
+    text-shadow: 0 0 6px var(--accent-glow);
+    transition: color 0.5s, text-shadow 0.5s;
 }
 #video-player {
     border-radius: 4px;
@@ -174,9 +249,9 @@ video_panel_html = '''
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    border: 1.5px solid rgba(255,255,255,0.2);
-    background: rgba(255,255,255,0.05);
-    color: rgba(255,255,255,0.2);
+    border: 1.5px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: var(--text-muted);
     font-family: 'Courier New', monospace;
     font-size: 10px;
     font-weight: bold;
@@ -187,19 +262,19 @@ video_panel_html = '''
     transition: all 0.2s;
 }
 #compass .dir.available {
-    border-color: #00ffff;
-    color: #00ffff;
-    background: rgba(0,255,255,0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-bg);
     cursor: pointer;
 }
 #compass .dir.available:hover {
-    background: rgba(0,255,255,0.25);
+    background: var(--accent-bg-hover);
 }
 #compass .dir.active-dir {
-    background: rgba(0,255,255,0.4);
-    border-color: #ffffff;
-    color: #ffffff;
-    box-shadow: 0 0 8px rgba(0,255,255,0.5);
+    background: var(--accent-bg-active);
+    border-color: var(--text-primary);
+    color: var(--text-primary);
+    box-shadow: 0 0 8px var(--accent-glow);
 }
 #compass .dir-n { top: 0; left: 50%; transform: translateX(-50%); }
 #compass .dir-s { bottom: 0; left: 50%; transform: translateX(-50%); }
@@ -211,7 +286,7 @@ video_panel_html = '''
     transform: translate(-50%, -50%);
     width: 4px; height: 4px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.3);
+    background: var(--dot-bg);
 }
 
 /* Clip nav */
@@ -224,8 +299,8 @@ video_panel_html = '''
 }
 #clip-nav button {
     background: none;
-    border: 1px solid rgba(255,255,255,0.2);
-    color: #ffffff;
+    border: 1px solid var(--btn-border);
+    color: var(--text-primary);
     font-size: 18px;
     width: 28px;
     height: 28px;
@@ -237,13 +312,13 @@ video_panel_html = '''
     transition: all 0.2s;
 }
 #clip-nav button:hover {
-    border-color: #00ffff;
-    color: #00ffff;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 #clip-counter {
     font-family: 'Courier New', monospace;
     font-size: 11px;
-    color: rgba(255,255,255,0.6);
+    color: var(--text-secondary);
 }
 </style>
 '''
@@ -269,13 +344,13 @@ time_slider_html = '''
     bottom: 20px;
     left: 20px;
     width: 260px;
-    background: rgba(0, 0, 0, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
     border-radius: 10px;
     padding: 12px 16px;
     z-index: 1000;
     opacity: 0;
-    transition: opacity 1s ease-in;
+    transition: opacity 1s ease-in, background 0.5s, border-color 0.5s;
 }
 #time-slider-panel.visible {
     opacity: 1;
@@ -284,7 +359,7 @@ time_slider_html = '''
     font-family: 'Courier New', monospace;
     font-size: 10px;
     font-weight: bold;
-    color: rgba(255,255,255,0.5);
+    color: var(--text-secondary);
     letter-spacing: 2px;
     margin-bottom: 4px;
 }
@@ -292,9 +367,9 @@ time_slider_html = '''
     font-family: 'Courier New', monospace;
     font-size: 13px;
     font-weight: bold;
-    color: #00ffff;
+    color: var(--accent);
     margin-bottom: 8px;
-    text-shadow: 0 0 6px rgba(0, 255, 255, 0.4);
+    text-shadow: 0 0 6px var(--accent-glow);
 }
 #time-slider-container {
     position: relative;
@@ -317,24 +392,24 @@ time_slider_html = '''
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #00ffff;
-    border: 2px solid #ffffff;
+    background: var(--accent);
+    border: 2px solid var(--thumb-border);
     cursor: pointer;
     pointer-events: all;
     position: relative;
     z-index: 2;
-    box-shadow: 0 0 6px rgba(0,255,255,0.5);
+    box-shadow: 0 0 6px var(--accent-glow);
     margin-top: -4px;
 }
 #time-slider-container input[type="range"]::-webkit-slider-runnable-track {
     height: 4px;
     border-radius: 2px;
-    background: rgba(255,255,255,0.1);
+    background: var(--track-bg);
 }
 #time-track-fill {
     position: absolute;
     height: 4px;
-    background: rgba(0,255,255,0.4);
+    background: var(--accent-bg-active);
     border-radius: 2px;
     top: 10px;
     pointer-events: none;
@@ -348,7 +423,7 @@ time_slider_html = '''
 #time-slider-ticks span {
     font-family: 'Courier New', monospace;
     font-size: 9px;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-dim);
 }
 </style>
 '''
@@ -384,7 +459,7 @@ pulse_css = '''
 .leaflet-interactive.marker-locked {
     opacity: 1 !important;
     stroke-width: 4;
-    stroke: #ffffff;
+    stroke: var(--locked-stroke);
     animation: none;
 }
 .leaflet-interactive.marker-dimmed {
@@ -417,6 +492,9 @@ document.addEventListener('DOMContentLoaded', function() {{
     var timeDisplay = document.getElementById('time-range-display');
     var trackFill = document.getElementById('time-track-fill');
 
+    var liveImg = document.getElementById('live-image');
+    var clipNav = document.getElementById('clip-nav');
+
     var state = {{
         activeMarker: null,
         lockedMarker: null,
@@ -425,11 +503,44 @@ document.addEventListener('DOMContentLoaded', function() {{
         clipIndex: 0,
         timeRange: [0, 23],
         orientation: null,
-        ready: false
+        ready: false,
+        mode: 'live',
+        liveInterval: null,
+        liveCameraId: null,
+        liveMarkers: [],
+        archiveMarkers: []
     }};
 
     // Smoother trackpad zoom
     map.options.wheelPxPerZoomLevel = 300;
+
+    // --- Day/night theme based on local time ---
+    var lightTiles = L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}@2x.png', {{
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd', maxZoom: 20
+    }});
+    var hour = new Date().getHours();
+    var isDay = hour >= 6 && hour < 19;
+    if (isDay) {{
+        // Remove default dark tiles, add light
+        map.eachLayer(function(layer) {{
+            if (layer instanceof L.TileLayer) map.removeLayer(layer);
+        }});
+        lightTiles.addTo(map);
+        document.documentElement.classList.add('theme-light');
+    }}
+
+    function recolorMarkers(theme) {{
+        var key = theme === 'light' ? 'colorLight' : 'colorDark';
+        state.archiveMarkers.forEach(function(m) {{
+            var c = m.options[key];
+            if (c) m.setStyle({{ color: c, fillColor: c }});
+        }});
+        state.liveMarkers.forEach(function(m) {{
+            var c = m.options[key];
+            if (c) m.setStyle({{ color: c, fillColor: c }});
+        }});
+    }}
 
     // --- Utility functions ---
 
@@ -611,20 +722,21 @@ document.addEventListener('DOMContentLoaded', function() {{
     map.once('moveend', function() {{
         mapTitle.classList.add('visible');
         overlay.classList.add('markers-visible');
-        timeSliderPanel.classList.add('visible');
+        setMode('live');
+        if (isDay) recolorMarkers('light');
         setTimeout(function() {{ state.ready = true; }}, 500);
     }});
 
-    // --- Marker interactions ---
+    // --- Collect archive markers ---
     map.eachLayer(function(layer) {{
         if (layer instanceof L.CircleMarker && layer.options.clipKey) {{
+            state.archiveMarkers.push(layer);
             layer.on('mouseover', function(e) {{
-                if (!state.ready || state.lockedMarker) return;
+                if (!state.ready || state.lockedMarker || state.mode !== '2020') return;
                 showVideo(layer);
             }});
-
             layer.on('click', function(e) {{
-                if (!state.ready) return;
+                if (!state.ready || state.mode !== '2020') return;
                 if (state.lockedMarker === layer) {{
                     state.lockedMarker._path.classList.remove('marker-locked');
                     state.lockedMarker = null;
@@ -639,6 +751,111 @@ document.addEventListener('DOMContentLoaded', function() {{
             }});
         }}
     }});
+
+    // --- Create live camera markers (hidden initially) ---
+    LIVE_CAMERAS.forEach(function(cam) {{
+        var lm = L.circleMarker([cam.lat, cam.lng], {{
+            radius: 5,
+            fill: true,
+            fillOpacity: 0.8,
+            color: isDay ? cam.colorLight : cam.color,
+            fillColor: isDay ? cam.colorLight : cam.color,
+            weight: 2
+        }});
+        lm.options.cameraId = cam.id;
+        lm.options.title = cam.name;
+        lm.options.colorDark = cam.color;
+        lm.options.colorLight = cam.colorLight;
+        state.liveMarkers.push(lm);
+
+        lm.on('mouseover', function() {{
+            if (!state.ready || state.lockedMarker || state.mode !== 'live') return;
+            showLive(lm);
+        }});
+        lm.on('click', function() {{
+            if (!state.ready || state.mode !== 'live') return;
+            if (state.lockedMarker === lm) {{
+                state.lockedMarker._path.classList.remove('marker-locked');
+                state.lockedMarker = null;
+            }} else {{
+                if (state.lockedMarker && state.lockedMarker._path) {{
+                    state.lockedMarker._path.classList.remove('marker-locked');
+                }}
+                state.lockedMarker = lm;
+                showLive(lm);
+                lm._path.classList.add('marker-locked');
+            }}
+        }});
+    }});
+
+    // --- Live feed functions ---
+    function showLive(layer) {{
+        if (state.activeMarker && state.activeMarker._path) {{
+            state.activeMarker._path.classList.remove('marker-active');
+        }}
+        state.activeMarker = layer;
+        if (layer._path) {{
+            layer._path.classList.add('marker-active');
+        }}
+
+        titleEl.textContent = layer.options.title;
+        compassEl.style.display = 'none';
+        clipNav.style.display = 'none';
+        video.style.display = 'none';
+        liveImg.style.display = 'block';
+        panel.classList.add('active');
+
+        state.liveCameraId = layer.options.cameraId;
+        refreshLiveImage();
+
+        if (state.liveInterval) clearInterval(state.liveInterval);
+        state.liveInterval = setInterval(refreshLiveImage, 2000);
+    }}
+
+    function refreshLiveImage() {{
+        if (!state.liveCameraId) return;
+        liveImg.src = 'https://webcams.nyctmc.org/api/cameras/' + state.liveCameraId + '/image?t=' + Date.now();
+    }}
+
+    // --- Mode toggle ---
+    function setMode(mode) {{
+        state.mode = mode;
+
+        // Clear active state
+        if (state.activeMarker && state.activeMarker._path) {{
+            state.activeMarker._path.classList.remove('marker-active');
+        }}
+        if (state.lockedMarker && state.lockedMarker._path) {{
+            state.lockedMarker._path.classList.remove('marker-locked');
+        }}
+        state.activeMarker = null;
+        state.lockedMarker = null;
+        state.clipKey = null;
+        panel.classList.remove('active');
+        if (state.liveInterval) {{
+            clearInterval(state.liveInterval);
+            state.liveInterval = null;
+        }}
+
+        if (mode === '2020') {{
+            mapTitle.textContent = 'NYC TRAFFIC \\u2014 2020';
+            // Show archive markers, hide live
+            state.archiveMarkers.forEach(function(m) {{ m.addTo(map); }});
+            state.liveMarkers.forEach(function(m) {{ m.remove(); }});
+            // Show 2020 controls
+            timeSliderPanel.style.display = '';
+            video.style.display = '';
+            liveImg.style.display = 'none';
+            clipNav.style.display = '';
+        }} else {{
+            mapTitle.textContent = 'NYC TRAFFIC \\u2014 LIVE';
+            // Show live markers, hide archive
+            state.archiveMarkers.forEach(function(m) {{ m.remove(); }});
+            state.liveMarkers.forEach(function(m) {{ m.addTo(map); }});
+            // Hide 2020 controls
+            timeSliderPanel.style.display = 'none';
+        }}
+    }}
 }});
 </script>
 '''
