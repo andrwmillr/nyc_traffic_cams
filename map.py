@@ -120,7 +120,7 @@ Element(f'<script>var CLIP_DATA={clip_data_json};var LIVE_CAMERAS={live_cam_json
 
 # --- Title overlay ---
 title_html = '''
-<div id="map-title">NYC TRAFFIC &mdash; LIVE</div>
+<div id="map-title">NYC LIVE</div>
 <style>
 :root {
     --panel-bg: rgba(0, 0, 0, 0.88);
@@ -848,7 +848,7 @@ document.addEventListener('DOMContentLoaded', function() {{
             liveImg.style.display = 'none';
             clipNav.style.display = '';
         }} else {{
-            mapTitle.textContent = 'NYC TRAFFIC \\u2014 LIVE';
+            mapTitle.textContent = 'NYC LIVE';
             // Show live markers, hide archive
             state.archiveMarkers.forEach(function(m) {{ m.remove(); }});
             state.liveMarkers.forEach(function(m) {{ m.addTo(map); }});
